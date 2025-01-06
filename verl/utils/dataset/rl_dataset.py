@@ -61,7 +61,8 @@ class RLHFDataset(Dataset):
     """
 
     def __init__(self,
-                 parquet_files: Union[str, List[str]],
+                 paths: Union[str, List[str]],
+                 split: str, # for huggingface datasets
                  tokenizer: PreTrainedTokenizer,
                  prompt_key='prompt',
                  max_prompt_length=1024,
@@ -70,10 +71,11 @@ class RLHFDataset(Dataset):
                  chat_template_func=None,
                  return_raw_chat=False,
                  truncation='error'):
-        if not isinstance(parquet_files, (List, ListConfig)):
-            parquet_files = [parquet_files]
+        if not isinstance(paths, (List, ListConfig)):
+            paths = [paths]
 
-        self.parquet_files = parquet_files
+        self.paths = paths
+        self.split = split
         self.cache_dir = os.path.expanduser(cache_dir)
         self.tokenizer = tokenizer
 
@@ -85,19 +87,30 @@ class RLHFDataset(Dataset):
         self.chat_template_func = chat_template_func
         self.truncation = truncation
 
-        self._download()
+        # self._download()
         self._read_files_and_tokenize()
 
-    def _download(self):
-        from verl.utils.fs import copy_local_path_from_hdfs
-        for i, parquet_file in enumerate(self.parquet_files):
-            self.parquet_files[i] = copy_local_path_from_hdfs(src=parquet_file, cache_dir=self.cache_dir)
+    # def _download(self):
+    #     from verl.utils.fs import copy_local_path_from_hdfs
+    #     for i, parquet_file in enumerate(self.parquet_files):
+    #         self.parquet_files[i] = copy_local_path_from_hdfs(src=parquet_file, cache_dir=self.cache_dir)
 
     def _read_files_and_tokenize(self):
         dataframes = []
-        for parquet_file in self.parquet_files:
+        for path in self.paths:
             # read parquet files and cache
-            dataframe = pd.read_parquet(parquet_file)
+            if path.endswith('.parquet'):
+                dataframe = pd.read_parquet(path)
+            # Huggingface datasets
+            else:
+                from datasets import load_dataset, load_from_disk
+                try:
+                    ds = load_from_disk(path)
+                except FileNotFoundError:
+                    ds = load_dataset(path, split=self.split)
+                    
+                dataframe = ds.to_pandas()
+                
             dataframes.append(dataframe)
         self.dataframe = pd.concat(dataframes)
 

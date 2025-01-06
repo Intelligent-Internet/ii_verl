@@ -76,3 +76,6 @@ verl = [
   "version/*",
   "trainer/config/*.yaml"
 ]
+
+[project.scripts]
+verl = "verl.cli.main:main"
