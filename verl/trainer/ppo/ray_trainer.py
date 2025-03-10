@@ -403,7 +403,8 @@ class RayPPOTrainer(object):
 
     def _create_dataloader(self):
         # TODO: we have to make sure the batch size is divisible by the dp size
-        self.train_dataset = RLHFDataset(parquet_files=self.config.data.train_files,
+        self.train_dataset = RLHFDataset(paths=self.config.data.train_files,
+                                         split=self.config.data.get('train_split', 'train'),
                                          tokenizer=self.tokenizer,
                                          processor=self.processor,
                                          prompt_key=self.config.data.prompt_key,
@@ -431,7 +432,8 @@ class RayPPOTrainer(object):
                                                    collate_fn=collate_fn,
                                                    sampler=sampler)
 
-        self.val_dataset = RLHFDataset(parquet_files=self.config.data.val_files,
+        self.val_dataset = RLHFDataset(paths=self.config.data.val_files,
+                                       split=self.config.data.get('val_split', 'test'),
                                        tokenizer=self.tokenizer,
                                        processor=self.processor,
                                        prompt_key=self.config.data.prompt_key,
