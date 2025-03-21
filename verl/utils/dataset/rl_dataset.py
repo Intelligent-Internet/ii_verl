@@ -26,7 +26,7 @@ from transformers import PreTrainedTokenizer, ProcessorMixin
 
 from verl.utils.model import compute_position_id_with_mask
 import verl.utils.torch_functional as verl_F
-
+from datasets import load_dataset, load_from_disk
 
 def collate_fn(data_list: list[dict]) -> dict:
     tensors = defaultdict(list)
@@ -78,7 +78,8 @@ class RLHFDataset(Dataset):
     """
 
     def __init__(self,
-                 parquet_files: Union[str, List[str]],
+                 paths: List[str],
+                 split: str, # for HuggingFace datasets
                  tokenizer: PreTrainedTokenizer,
                  processor: Optional[ProcessorMixin] = None,
                  prompt_key='prompt',
@@ -89,12 +90,12 @@ class RLHFDataset(Dataset):
                  chat_template_func=None,
                  return_raw_chat=False,
                  truncation='error',
-                 filter_overlong_prompts=False):
-        if not isinstance(parquet_files, (List, ListConfig)):
-            parquet_files = [parquet_files]
+                 filter_overlong_prompts=True):
+        if not isinstance(paths, (List, ListConfig)):
+            paths = [paths]
 
-        self.parquet_files = copy.deepcopy(parquet_files)
-        self.original_parquet_files = copy.deepcopy(parquet_files)  # use for resume
+        self.paths = paths
+        self.split = split
         self.cache_dir = os.path.expanduser(cache_dir)
         self.tokenizer = tokenizer
         self.processor = processor
@@ -112,7 +113,7 @@ class RLHFDataset(Dataset):
         # whether to store the dataset in state_dict()
         # default not store
         self.serialize_dataset = False
-        self._download()
+        # self._download()
         self._read_files_and_tokenize()
 
     def _download(self, use_origin_parquet=False):
@@ -123,9 +124,18 @@ class RLHFDataset(Dataset):
 
     def _read_files_and_tokenize(self):
         dataframes = []
-        for parquet_file in self.parquet_files:
+        for path in self.paths:
             # read parquet files and cache
-            dataframe = pd.read_parquet(parquet_file)
+            if path.endswith('.parquet'):
+                dataframe = pd.read_parquet(path)
+            # HuggingFace datasets
+            else:
+                try:
+                    ds = load_from_disk(path)
+                except FileNotFoundError:
+                    ds = load_dataset(path, split=self.split)
+                dataframe = ds.to_pandas()
+                
             dataframes.append(dataframe)
         self.dataframe = pd.concat(dataframes)
 

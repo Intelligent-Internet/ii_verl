@@ -1,0 +1,45 @@
+algorithm:
+  adv_estimator: grpo
+  kl_ctrl:
+    kl_coef: 0.001
+
+data:
+  train_files: "./data/gsm8k/train.parquet"
+  val_files: "./data/gsm8k/test.parquet"
+  train_batch_size: 1024
+  max_prompt_length: 512
+  max_response_length: 1024
+  filter_overlong_prompts: true
+  truncation: "error"
+
+actor_rollout_ref:
+  model:
+    path: Qwen/Qwen2-7B-Instruct
+    use_remove_padding: true
+    enable_gradient_checkpointing: true
+  actor:
+    optim:
+      lr: 1e-6
+    ppo_mini_batch_size: 256
+    ppo_micro_batch_size_per_gpu: 40
+    use_kl_loss: true
+    kl_loss_coef: 0.001
+    kl_loss_type: low_var_kl
+  rollout:
+    log_prob_micro_batch_size_per_gpu: 40
+    tensor_model_parallel_size: 2
+    name: vllm
+    gpu_memory_utilization: 0.6
+    n: 5
+  ref:
+    log_prob_micro_batch_size_per_gpu: 40
+
+trainer:
+  critic_warmup: 0
+  project_name: "verl_grpo_example_gsm8k"
+  experiment_name: "qwen2_7b_function_rm"
+  n_gpus_per_node: 8
+  nnodes: 1
+  save_freq: -1
+  test_freq: 5
+  total_epochs: 15
