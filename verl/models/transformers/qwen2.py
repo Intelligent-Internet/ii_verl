@@ -35,6 +35,7 @@ def qwen2_flash_attn_forward(
         use_cache: bool = False,
         cache_position: Optional[torch.LongTensor] = None,
         position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
+        **kwargs
 ):
     bsz, q_len, _ = hidden_states.size()
 
@@ -109,7 +110,10 @@ def qwen2_flash_attn_forward(
         sliding_window = self.config.sliding_window
     else:
         sliding_window = None
-
+    # print(position_ids)
+    rank = torch.distributed.get_rank()
+    if rank == 0:
+        import ipdb; ipdb.set_trace()
     attn_output = _flash_attention_forward(
         query_states,
         key_states,

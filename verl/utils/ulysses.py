@@ -54,6 +54,7 @@ def get_ulysses_sequence_parallel_rank(group: ProcessGroup = None) -> int:
     """
     Get ulysses sequence parallel rank.
     """
+    assert group is not None
     group = get_ulysses_sequence_parallel_group() if group is None else group
     return dist.get_rank(group) if group else 0
 
@@ -100,10 +101,10 @@ def gather_heads_scatter_seq(x: Tensor, head_dim: int, seq_dim: int, group: Proc
     return SeqAllToAll.apply(group, x, seq_dim, head_dim, False)
 
 
-def _pad_tensor(x: Tensor, dim: int, padding_size: int) -> Tensor:
+def _pad_tensor(x: Tensor, dim: int, padding_size: int, pad_index: int = 0) -> Tensor:
     shape = list(x.shape)
     shape[dim] = padding_size
-    pad = torch.zeros(shape, dtype=x.dtype, device=x.device)
+    pad = torch.zeros(shape, dtype=x.dtype, device=x.device) + pad_index
     return torch.cat([x, pad], dim=dim)
 
 
@@ -113,15 +114,16 @@ def _unpad_tensor(x: Tensor, dim: int, padding_size: int) -> Tensor:
     return x[slc]
 
 
-def slice_input_tensor(x: Tensor, dim: int, padding: bool = True, group: ProcessGroup = None) -> Tensor:
+def slice_input_tensor(x: Tensor, dim: int, padding: bool = True, group: ProcessGroup = None, pad_index: int = 0) -> Tensor:
+    assert group is not None
     group = get_ulysses_sequence_parallel_group() if group is None else group
     sp_world_size = dist.get_world_size(group)
-    sp_rank = get_ulysses_sequence_parallel_rank()
+    sp_rank = get_ulysses_sequence_parallel_rank(group)
     dim_size = x.size(dim)
     # pad before slice
     if padding and dim_size % sp_world_size:
         padding_size = sp_world_size - (dim_size % sp_world_size)
-        x = _pad_tensor(x, dim, padding_size)
+        x = _pad_tensor(x, dim, padding_size, pad_index=pad_index)
     # slice the input tensor
     parts = x.size(dim) // sp_world_size
     slc = [slice(None)] * len(x.shape)
@@ -237,7 +239,7 @@ def gather_outpus_and_unpad(x: Tensor,
                             grad_scaler: bool = True,
                             group: Optional[dist.ProcessGroup] = None):
     group = get_ulysses_sequence_parallel_group() if group is None else group
-    sp_size = get_ulysses_sequence_parallel_world_size()
+    sp_size = get_ulysses_sequence_parallel_world_size(group)
     if group == None:
         return x
     x = Gather.apply(group, x, gather_dim, grad_scaler)
@@ -251,7 +253,7 @@ def gather_outpus_and_unpad(x: Tensor,
 
 def ulysses_pad_and_slice_inputs(input_ids_rmpad: torch.Tensor,
                                  position_ids_rmpad: Optional[torch.Tensor] = None,
-                                 sp_size: int = 1):
+                                 sp_size: int = 1, pad_index: int = 0, group: Optional[dist.ProcessGroup] = None):
     """
     Pad and slice input_ids to be divisible by sp_size
     Pad position_ids to be divisible by sp_size.
@@ -281,8 +283,12 @@ def ulysses_pad_and_slice_inputs(input_ids_rmpad: torch.Tensor,
     if pad_size > 0:
         input_ids_rmpad = torch.nn.functional.pad(input_ids_rmpad, (0, pad_size), value=0)
         if position_ids_rmpad is not None:
-            pad_pos_ids = torch.arange(pad_size, device=position_ids_rmpad.device).unsqueeze(0)
+            pad_pos_ids = torch.arange(pad_size, device=position_ids_rmpad.device).unsqueeze(0) + position_ids_rmpad.size(1)
             position_ids_rmpad = torch.cat((position_ids_rmpad, pad_pos_ids), dim=-1)
     # we don't need to slice position ids
-    input_ids_rmpad = slice_input_tensor(input_ids_rmpad, dim=1, padding=False)
-    return input_ids_rmpad, position_ids_rmpad, pad_size
+    input_ids_rmpad = slice_input_tensor(input_ids_rmpad, dim=1, padding=False, pad_index=pad_index, group=group)
+    if position_ids_rmpad is not None:
+        position_ids_rmpad_splited = slice_input_tensor(position_ids_rmpad, dim=1, padding=False, group=group)
+    else:
+        position_ids_rmpad_splited = None
+    return input_ids_rmpad, position_ids_rmpad_splited, position_ids_rmpad,  pad_size
