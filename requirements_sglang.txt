@@ -5,17 +5,17 @@ datasets
 dill
 flash-attn
 hydra-core
-liger-kernel
 numpy
 pandas
 peft
 pyarrow>=15.0.0
 pybind11
 pylatexenc
-pylint==3.3.6
-ray[default]
+ray[default]>=2.10
 tensordict<=0.6.2
 torchdata
+torchvision
 transformers
-# vllm==0.6.3.post1
 wandb
+sglang[all]==0.4.4.post3
+torch-memory-saver>=0.0.5

@@ -127,7 +127,7 @@ class PRIMERewardModelWorker(Worker):
 
             if config.model.get('use_remove_padding', False) or self.ulysses_sequence_parallel_size > 1:
                 from verl.models.transformers.monkey_patch import apply_monkey_patch
-                apply_monkey_patch(model=reward_module)
+                apply_monkey_patch(model=reward_module, ulysses_sp_size=self.ulysses_sequence_parallel_size)
 
             # some parameters may not in torch_dtype
             reward_module.to(torch_dtype)
@@ -320,7 +320,7 @@ class PRIMERewardModelWorker(Worker):
         return output
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
-    def save_checkpoint(self, local_path, hdfs_path=None, global_step=0, remove_previous_ckpt=False):
+    def save_checkpoint(self, local_path, hdfs_path=None, global_step=0, max_ckpt_to_keep=None):
         import torch
         if self._is_offload_param:
             load_fsdp_model_to_gpu(self.reward_module)
@@ -328,7 +328,7 @@ class PRIMERewardModelWorker(Worker):
         self.checkpoint_manager.save_checkpoint(local_path=local_path,
                                                 hdfs_path=hdfs_path,
                                                 global_step=global_step,
-                                                remove_previous_ckpt=remove_previous_ckpt)
+                                                max_ckpt_to_keep=max_ckpt_to_keep)
 
         torch.distributed.barrier()
         if self._is_offload_param:
